@@ -93,21 +93,17 @@ def normalizar_nome_para_mapeamento(nome):
 
 def obter_nome_aba_final_personalizado(nome_arquivo_origem):
     """
-    Retorna o nome padronizado da aba final com base no nome do arquivo de origem.
-
-    Regras solicitadas:
-    - Gerencial 04(data) -> PVE
-    - Gerencial 03-06-2026(data) -> COB
-    - Resumo Gerencial -> NOB
-    - Resumo Gerencial Diário - EDE - -> EDE
+ EDE - -> EDE    Retorna o nome padronizado da aba final com base no nome do arquivo de origem.
     - RG Sobradinho -> SOB
     - Gerencial_03(data) -> XAM
+    - Gerencial_04(data) -> XAM
+    - Gerencial_qualquer_dia -> XAM
     - Resumo Gerencial Cuiabá 02.06.2026(data) -> CUI
 
     Regras críticas:
-    - XAM exige underscore: Gerencial_03
-    - COB exige espaço + data com hífen: Gerencial 03-06-2026
-    - PVE exige espaço + 04: Gerencial 04
+    - XAM exige underline: Gerencial_03, Gerencial_04, Gerencial_05 etc.
+    - COB exige espaço + data completa com hífen: Gerencial 03-06-2026.
+    - PVE exige espaço + dia: Gerencial 04, Gerencial 05 etc.
     """
 
     nome_original_sem_ext = os.path.splitext(str(nome_arquivo_origem))[0]
@@ -126,25 +122,29 @@ def obter_nome_aba_final_personalizado(nome_arquivo_origem):
     if "rg sobradinho" in nome_normalizado:
         return "SOB"
 
-    # XAM: precisa ter underscore entre Gerencial e 03.
-    # Exemplos aceitos:
-    # - Gerencial_03.xlsx
-    # - Gerencial_03 05.06.2026.xlsx
-    # - Gerencial_03-06-2026.xlsx
-    # - Gerencial_03 (data).xlsx
-    if re.search(r"(^|[^a-z0-9])gerencial_0?3([^0-9]|$)", nome_sem_acento):
+    # XAM:
+    # Gerencial_03
+    # Gerencial_04
+    # Gerencial_05
+    # Gerencial_10
+    # O número após o underline é variável, pois representa data/dia.
+    if re.search(r"\bgerencial_([0-2]?\d|3[01])\b", nome_sem_acento):
         return "XAM"
 
-    # COB: precisa ter Gerencial + espaço + data completa com hífen.
-    # Exemplo: Gerencial 03-06-2026.xlsx
-    # Não confundir com Gerencial_03.
-    if re.search(r"\bgerencial\s+\d{2}-\d{2}-\d{4}\b", nome_sem_acento):
+    # COB:
+    # Gerencial 03-06-2026
+    # Espaço entre Gerencial e a data, e data completa com hífen.
+    if re.search(r"\bgerencial\s+([0-2]\d|3[01])-[01]\d-\d{4}\b", nome_sem_acento):
         return "COB"
 
-    # PVE: Gerencial + espaço + 04.
-    # Exemplo: Gerencial 04.xlsx ou Gerencial 04 qualquer coisa.xlsx
-    # Não pega Gerencial_04 porque exige espaço.
-    if re.search(r"\bgerencial\s+04\b", nome_sem_acento):
+    # PVE:
+    # Gerencial 04
+    # Gerencial 05
+    # Gerencial 10
+    # Espaço entre Gerencial e o dia.
+    # Não pode ter underline.
+    # Não pode ser data completa com hífen.
+    if re.search(r"\bgerencial\s+([0-2]?\d|3[01])([^0-9-]|$)", nome_sem_acento):
         return "PVE"
 
     # Resumo Gerencial genérico classifica como NOB.
@@ -152,6 +152,12 @@ def obter_nome_aba_final_personalizado(nome_arquivo_origem):
         return "NOB"
 
     return limpar_nome_aba(nome_arquivo_origem)
+
+    Regras solicitadas:
+    - Gerencial 04(data) -> PVE
+    - Gerencial 03-06-2026(data) -> COB
+    - Resumo Gerencial -> NOB
+
 
 
 # ============================================================
