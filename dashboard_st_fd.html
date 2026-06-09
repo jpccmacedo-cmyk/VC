@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard ST &amp; FD</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#1e293b}
+header{background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 24px;display:flex;align-items:center;gap:12px}
+header h1{font-size:18px;font-weight:700}
+header p{font-size:12px;color:#64748b}
+.upload-area{max-width:560px;margin:24px auto;border:2px dashed #cbd5e1;border-radius:12px;padding:32px;text-align:center;background:#fff;cursor:pointer;transition:border-color .2s}
+.upload-area:hover,.upload-area.drag{border-color:#3b82f6}
+.upload-area input{display:none}
+.upload-area .label{font-size:14px;font-weight:600;color:#334155}
+.upload-area .desc{font-size:12px;color:#94a3b8;margin-top:4px}
+.upload-count{margin-left:auto;font-size:12px;color:#64748b}
+.errors{max-width:560px;margin:12px auto;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.05);border-radius:12px;padding:16px}
+.errors .title{font-size:13px;font-weight:600;color:#ef4444;margin-bottom:6px}
+.errors ul{font-size:12px;color:#ef4444;list-style:none}
+.errors ul li::before{content:"• ";font-weight:bold}
+.dashboard{width:100%;padding:0 16px}
+.section{margin:24px 0}
+.panel{border:1px solid #e2e8f0;border-radius:12px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.panel-header{padding:12px 16px;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.panel-header h3{font-size:13px;font-weight:600}
+.panel-header label{font-size:13px;font-weight:500;margin-left:8px}
+.panel-header select{margin-left:6px;border:1px solid #e2e8f0;border-radius:8px;padding:4px 10px;font-size:13px;background:#f8fafc}
+.legend{display:flex;gap:12px;align-items:center;font-size:11px;margin-left:auto}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:middle;margin-right:2px}
+.filter-bar{padding:8px 16px;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.filter-bar span{font-size:11px;font-weight:500;color:#64748b;margin-right:6px}
+.fbtn{font-size:11px;padding:2px 8px;border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;cursor:pointer}
+.fbtn:hover{background:#f1f5f9}
+.fbtn.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
+.fsep{margin:0 4px;color:#e2e8f0}
+table{border-collapse:collapse;font-size:11px;white-space:nowrap}
+th,td{border:1px solid #e2e8f0;padding:4px 6px;text-align:center}
+th{background:#f1f5f9;font-weight:500}
+th.left{text-align:left;position:sticky;left:0;z-index:2;background:#f1f5f9}
+td.left{text-align:left;position:sticky;left:0;z-index:2;background:#f1f5f9;font-weight:500}
+.table-wrap{overflow:auto;max-height:440px}
+.chart-wrap{padding:16px;overflow:auto}
+.chart-title{padding:12px 16px;font-size:13px;font-weight:600;border-bottom:1px solid #e2e8f0}
+.chart-legend{display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:11px;color:#64748b}
+.empty{text-align:center;padding:80px 0;color:#94a3b8;font-size:14px}
+</style>
+</head>
+<body>
+<header>
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17V10M12 17V6M16 17V13"/></svg>
+<div>
+<h1>Dashboard ST &amp; FD</h1>
+<p>Faça upload do arquivo Excel (abas "Diário - ST" e "Diário - FD Multiflex")</p>
+</div>
+<div id="uploadCount" class="upload-count" style="display:none"></div>
+</header>
+
+<main>
+<div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+<input type="file" id="fileInput" accept=".xlsx,.xlsm">
+<div class="label">Acompanhamento KPIs</div>
+<div class="desc">Excel com abas 'Diário - ST' e 'Diário - FD Multiflex' (.xlsx / .xlsm)</div>
+<div id="fileName" style="margin-top:8px;font-size:12px;color:#3b82f6"></div>
+</div>
+<div id="errorsDiv" class="errors" style="display:none"></div>
+<div id="dashboardDiv" class="dashboard" style="display:none"></div>
+<div id="emptyDiv" class="empty">
+<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="1.5" style="margin:0 auto 16px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17V10M12 17V6M16 17V13"/></svg>
+<p>Faça upload do arquivo Excel acima para visualizar o dashboard</p>
+</div>
+</main>
+
+<script>
+const ALLOWED=["COB","CUI","EDE","NOB","PVE","SOB","XAM","CN"];
+const MN=["--","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+let stStore=null,fdStore=null,uploadN=0;
+
+function pv(v){if(v===null||v===undefined||v===""||v==="-")return null;if(typeof v==="number")return isNaN(v)?null:v;if(typeof v==="string"){let c=v.replace(",",".").replace("%","").trim();if(!c||c==="-")return null;let n=parseFloat(c);return isNaN(n)?null:n}return null}
+function daysInMonth(y,m){return new Date(y,m,0).getDate()}
+function excelToDate(s){return new Date(new Date(1899,11,30).getTime()+s*86400000)}
+function parseDate(v){if(v instanceof Date)return v;if(typeof v==="number"&&v>40000&&v<60000)return excelToDate(v);if(typeof v==="string"){let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);let d=new Date(v);if(!isNaN(d.getTime())&&d.getFullYear()>2000)return d}return null}
+function findHdr(data,kw){for(let i=0;i<Math.min(10,data.length);i++){if(data[i]&&data[i].some(c=>String(c??"").trim().toLowerCase().startsWith(kw.toLowerCase())))return i}return -1}
+
+function parseST(data){
+let dm={},mp={},errs=[];
+let hr=findHdr(data,"Planta");if(hr<0){errs.push("ST: coluna Planta não encontrada");return{dm,mp,errs}}
+let h=data[hr],pc=-1,mc=-1,rc=-1,rlc=-1,dc=[];
+for(let j=0;j<h.length;j++){let s=String(h[j]??"").trim(),sl=s.toLowerCase();if(sl.startsWith("planta"))pc=j;else if(s==="M300")mc=j;else if(s==="RF")rc=j;else if(sl==="real")rlc=j;else{let d=parseDate(h[j]);if(d)dc.push({col:j,date:d})}}
+if(pc<0||!dc.length){errs.push("ST: estrutura inválida");return{dm,mp,errs}}
+let fd=dc[0].date,yr=fd.getFullYear(),mo=fd.getMonth()+1,ld=daysInMonth(yr,mo),key=yr+"-"+mo;
+let labels=[];for(let i=1;i<=ld;i++)labels.push(String(i).padStart(2,"0")+"/"+String(mo).padStart(2,"0"));
+let dayMap={};for(let d of dc)dayMap[d.date.getDate()]=d.col;
+dm[key]={};
+for(let i=hr+1;i<data.length;i++){let row=data[i];if(!row)continue;let p=String(row[pc]??"").trim();if(!p)continue;
+let mv=mc>=0?pv(row[mc]):null,rv=rc>=0?pv(row[rc]):null,acc=rlc>=0?pv(row[rlc]):null;
+let real=[],m3=[],rf=[];for(let d=1;d<=ld;d++){real.push(d in dayMap?pv(row[dayMap[d]]):null);m3.push(mv);rf.push(rv)}
+dm[key][p]={labels,real,m300:m3,rf,acc}}
+let ys=String(yr);if(!mp[ys])mp[ys]=[];if(!mp[ys].includes(mo))mp[ys].push(mo);mp[ys].sort((a,b)=>a-b);
+return{dm,mp,errs}}
+
+function parseFD(data){
+let dm={},mp={},errs=[];
+let hr=findHdr(data,"Planta");if(hr<0){errs.push("FD: coluna Planta não encontrada");return{dm,mp,errs}}
+let h=data[hr],pc=-1,kc=-1,ac=-1,dc=[];
+for(let j=0;j<h.length;j++){let s=String(h[j]??"").trim(),sl=s.toLowerCase();if(sl.startsWith("planta"))pc=j;else if(sl==="kpi")kc=j;else if(sl.includes("real")&&sl.includes("tt"))ac=j;else{let d=parseDate(h[j]);if(d)dc.push({col:j,date:d})}}
+if(pc<0||!dc.length){errs.push("FD: estrutura inválida");return{dm,mp,errs}}
+let fd=dc[0].date,yr=fd.getFullYear(),mo=fd.getMonth()+1,ld=daysInMonth(yr,mo),key=yr+"-"+mo;
+let labels=[];for(let i=1;i<=ld;i++)labels.push(String(i).padStart(2,"0")+"/"+String(mo).padStart(2,"0"));
+let dayMap={};for(let d of dc)dayMap[d.date.getDate()]=d.col;
+dm[key]={};
+for(let i=hr+1;i<data.length;i++){let row=data[i];if(!row)continue;let p=String(row[pc]??"").trim();if(!p)continue;
+let kpi=kc>=0?String(row[kc]??"").trim():"";let label=kpi?p+" - "+kpi:p;
+let acc=ac>=0?pv(row[ac]):null;if(acc!==null&&acc>1)acc/=100;
+let real=[];for(let d=1;d<=ld;d++){if(d in dayMap){let v=pv(row[dayMap[d]]);if(v!==null&&v>1)v/=100;real.push(v)}else real.push(null)}
+dm[key][label]={labels,real,acc}}
+let ys=String(yr);if(!mp[ys])mp[ys]=[];if(!mp[ys].includes(mo))mp[ys].push(mo);mp[ys].sort((a,b)=>a-b);
+return{dm,mp,errs}}
+
+function merge(existing,incoming,dmKey,mpKey){
+if(!existing)return incoming;let r={};r[dmKey]={...existing[dmKey],...incoming[dmKey]};r[mpKey]={...existing[mpKey]};
+for(let yr in incoming[mpKey]){let s=new Set([...(r[mpKey][yr]||[]),...incoming[mpKey][yr]]);r[mpKey][yr]=[...s].sort((a,b)=>a-b)}return r}
+
+function statusColor(rv,m,rf){if(rv==null)return"#fff";let hm=m!=null,hr=rf!=null;
+if(hm&&hr){if(rv>=m&&rv>=rf)return"#C6EFCE";if(rv<m&&rv<rf)return"#FFC7CE";return"#FFEB9C"}
+if(hm)return rv>=m?"#C6EFCE":"#FFC7CE";if(hr)return rv>=rf?"#C6EFCE":"#FFC7CE";return"#FFEB9C"}
+function colorFD(v){if(v==null)return"#fff";if(v>=.95)return"#C6EFCE";if(v>=.85)return"#FFEB9C";return"#FFC7CE"}
+function fmt(v){if(v==null)return"";return v.toFixed(2).replace(".",",")}
+function pct(v){if(v==null)return"";return(v*100).toFixed(2).replace(".",",")+"%"}
+
+// Drag & drop
+const dz=document.getElementById("dropZone"),fi=document.getElementById("fileInput");
+dz.addEventListener("dragover",e=>{e.preventDefault();dz.classList.add("drag")});
+dz.addEventListener("dragleave",()=>dz.classList.remove("drag"));
+dz.addEventListener("drop",e=>{e.preventDefault();dz.classList.remove("drag");if(e.dataTransfer.files.length)processFile(e.dataTransfer.files[0])});
+fi.addEventListener("change",()=>{if(fi.files.length)processFile(fi.files[0])});
+
+function processFile(file){
+document.getElementById("fileName").textContent=file.name;
+let reader=new FileReader();
+reader.onload=function(e){
+let wb=XLSX.read(e.target.result,{type:"array",cellDates:false});
+let errors=[];
+let stSheet=wb.SheetNames.find(n=>n.toLowerCase().includes("diário")&&n.toLowerCase().includes("st"));
+if(stSheet){let d=XLSX.utils.sheet_to_json(wb.Sheets[stSheet],{header:1,raw:true});let r=parseST(d);
+if(r.errs.length&&!Object.keys(r.dm).length)errors.push(...r.errs);
+else{stStore=merge(stStore,{dm:r.dm,mp:r.mp},"dm","mp");if(r.errs.length)errors.push(...r.errs)}}
+else errors.push("Aba 'Diário - ST' não encontrada");
+
+let fdSheet=wb.SheetNames.find(n=>n.toLowerCase().includes("diário")&&n.toLowerCase().includes("fd")&&n.toLowerCase().includes("multiflex"));
+if(fdSheet){let d=XLSX.utils.sheet_to_json(wb.Sheets[fdSheet],{header:1,raw:true});let r=parseFD(d);
+if(r.errs.length&&!Object.keys(r.dm).length)errors.push(...r.errs);
+else{fdStore=merge(fdStore,{dm:r.dm,mp:r.mp},"dm","mp");if(r.errs.length)errors.push(...r.errs)}}
+else errors.push("Aba 'Diário - FD Multiflex' não encontrada");
+
+uploadN++;
+document.getElementById("uploadCount").style.display="block";
+document.getElementById("uploadCount").textContent=uploadN+" upload(s) — histórico preservado";
+showErrors(errors);
+render()};
+reader.readAsArrayBuffer(file)}
+
+function showErrors(errs){let div=document.getElementById("errorsDiv");
+if(!errs.length){div.style.display="none";return}
+div.style.display="block";div.innerHTML='<div class="title">⚠ Avisos</div><ul>'+errs.map(e=>"<li>"+e+"</li>").join("")+"</ul>"}
+
+function render(){
+let dash=document.getElementById("dashboardDiv");
+document.getElementById("emptyDiv").style.display="none";
+if(!stStore&&!fdStore){document.getElementById("emptyDiv").style.display="block";dash.style.display="none";return}
+dash.style.display="block";dash.innerHTML="";
+if(stStore)renderST(dash);
+if(fdStore)renderFD(dash)}
+
+function renderST(container){
+let dm=stStore.dm,mp=stStore.mp;
+let years=Object.keys(mp).sort();if(!years.length)return;
+let yr=years[years.length-1],months=mp[yr]||[],mo=months[months.length-1]||1;
+let sec=document.createElement("div");sec.className="section";
+let panel=document.createElement("div");panel.className="panel";
+let sel=null;
+
+function build(){
+let key=yr+"-"+mo,allData=dm[key]||{};
+let avail=ALLOWED.filter(p=>p in allData);
+if(!sel)sel=new Set(avail);
+panel.innerHTML="";
+
+// Header
+let hdr=document.createElement("div");hdr.className="panel-header";
+hdr.innerHTML=`<h3>ST Heatmap — ${MN[mo]}/${yr}</h3>`;
+
+let lbYr=document.createElement("label");lbYr.innerHTML="Ano: ";
+let selYr=document.createElement("select");years.forEach(y=>{let o=document.createElement("option");o.value=y;o.textContent=y;if(y===yr)o.selected=true;selYr.appendChild(o)});
+selYr.onchange=()=>{yr=selYr.value;months=mp[yr]||[];mo=months[months.length-1]||1;sel=null;build()};
+lbYr.appendChild(selYr);hdr.appendChild(lbYr);
+
+let lbMo=document.createElement("label");lbMo.innerHTML="Mês: ";
+let selMo=document.createElement("select");(mp[yr]||[]).forEach(m=>{let o=document.createElement("option");o.value=m;o.textContent=MN[m];if(m===mo)o.selected=true;selMo.appendChild(o)});
+selMo.onchange=()=>{mo=+selMo.value;sel=null;build()};
+lbMo.appendChild(selMo);hdr.appendChild(lbMo);
+
+let leg=document.createElement("div");leg.className="legend";
+leg.innerHTML='<span><i style="background:#C6EFCE"></i> ≥ M300 &amp; RF</span><span><i style="background:#FFEB9C"></i> Parcial</span><span><i style="background:#FFC7CE"></i> &lt; M300 &amp; RF</span>';
+hdr.appendChild(leg);panel.appendChild(hdr);
+
+// Filter
+let fb=document.createElement("div");fb.className="filter-bar";
+fb.innerHTML='<span>Plantas:</span>';
+let bAll=document.createElement("button");bAll.className="fbtn";bAll.textContent="Todas";bAll.onclick=()=>{sel=new Set(avail);build()};fb.appendChild(bAll);
+let bNone=document.createElement("button");bNone.className="fbtn";bNone.textContent="Nenhuma";bNone.onclick=()=>{sel=new Set();build()};fb.appendChild(bNone);
+let sp=document.createElement("span");sp.className="fsep";sp.textContent="|";fb.appendChild(sp);
+avail.forEach(p=>{let b=document.createElement("button");b.className="fbtn"+(sel.has(p)?" active":"");b.textContent=p;
+b.onclick=()=>{if(sel.has(p))sel.delete(p);else sel.add(p);build()};fb.appendChild(b)});
+panel.appendChild(fb);
+
+// Table
+let plants=[...sel].filter(p=>avail.includes(p));
+let tw=document.createElement("div");tw.className="table-wrap";
+let tbl=document.createElement("table");
+let labels=plants.length&&allData[plants[0]]?allData[plants[0]].labels:[];
+let thead="<thead><tr><th class='left'>Planta</th><th>M300</th><th>RF</th>";
+labels.forEach(l=>{thead+="<th>"+l+"</th>"});thead+="<th>Acc mês</th></tr></thead>";
+let tbody="<tbody>";
+plants.forEach(p=>{let d=allData[p];if(!d)return;let m=d.m300[0],rf=d.rf[0];
+tbody+="<tr><td class='left'>"+p+"</td><td style='background:#eef2f7'>"+fmt(m)+"</td><td style='background:#eef2f7'>"+fmt(rf)+"</td>";
+d.real.forEach((v,i)=>{tbody+="<td style='background:"+statusColor(v,m,rf)+"'>"+fmt(v)+"</td>"});
+tbody+="<td style='background:"+statusColor(d.acc,m,rf)+";font-weight:600'>"+fmt(d.acc)+"</td></tr>"});
+tbody+="</tbody>";tbl.innerHTML=thead+tbody;tw.appendChild(tbl);panel.appendChild(tw);
+
+// Chart (first selected plant)
+if(plants.length){renderSTChart(panel,allData[plants[0]],plants[0],mo,yr)}
+}
+
+build();sec.appendChild(panel);container.appendChild(sec)}
+
+function renderSTChart(panel,data,plant,month,year){
+let wrap=document.createElement("div");wrap.className="panel";wrap.style.marginTop="16px";
+let title=document.createElement("div");title.className="chart-title";title.textContent=plant+" — "+MN[month]+"/"+year;wrap.appendChild(title);
+let cw=document.createElement("div");cw.className="chart-wrap";
+let{labels,real,m300,rf,acc}=data;
+let w=920,h=360,left=50,right=20,bottom=60;
+let cats=labels.length+(acc!=null?2:0);
+let bw=Math.max(6,Math.floor((w-left-right)/Math.max(1,cats*1.3)));
+let all=[...real,...m300,...rf].filter(v=>v!==null);
+let ymin=0,ymax=all.length?Math.max(...all):1;if(ymax===0)ymax=1;
+let sx=i=>Math.round(left+i*((w-left-right)/Math.max(1,cats))+5);
+let sy=y=>Math.round(h-bottom-((y-ymin)*(h-20-bottom))/(ymax-ymin));
+
+let svg=`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect width="${w}" height="${h}" fill="white" stroke="#e5e7eb"/>`;
+for(let k=0;k<=5;k++){let yv=ymin+k*(ymax-ymin)/5,yp=sy(yv);svg+=`<text x="${left-6}" y="${yp+4}" font-size="10" text-anchor="end" fill="#6b7280">${yv.toFixed(0)}</text><line x1="${left}" y1="${yp}" x2="${w-right}" y2="${yp}" stroke="#eee"/>`}
+labels.forEach((_,i)=>{svg+=`<text x="${sx(i)+bw/2}" y="${h-15}" font-size="10" text-anchor="middle" fill="#6b7280">${i+1}</text>`});
+real.forEach((v,i)=>{if(v==null)return;let x=sx(i),y=sy(v),ht=h-bottom-y;svg+=`<rect x="${x}" y="${y}" width="${bw}" height="${ht}" fill="${statusColor(v,m300[i],rf[i])}" stroke="#cbd5e1"/><text x="${x+bw/2}" y="${y-4}" font-size="9" text-anchor="middle" fill="#374151">${fmt(v)}</text>`});
+if(acc!=null){let ax=sx(labels.length+1),ay=sy(acc),ah=h-bottom-ay;svg+=`<rect x="${ax}" y="${ay}" width="${bw}" height="${ah}" fill="${statusColor(acc,m300[0],rf[0])}" stroke="#cbd5e1"/><text x="${ax+bw/2}" y="${ay-4}" font-size="9" text-anchor="middle" fill="#374151">${fmt(acc)}</text><text x="${ax+bw/2}" y="${h-15}" font-size="10" text-anchor="middle" fill="#6b7280">Acc</text>`}
+let mPts=m300.map((y,i)=>y==null?null:`${sx(i)+bw/2},${sy(y)}`).filter(Boolean).join(" ");
+let rPts=rf.map((y,i)=>y==null?null:`${sx(i)+bw/2},${sy(y)}`).filter(Boolean).join(" ");
+if(mPts)svg+=`<polyline fill="none" stroke="#000" stroke-dasharray="6,4" stroke-width="2" points="${mPts}"/>`;
+if(rPts)svg+=`<polyline fill="none" stroke="#ED7D31" stroke-dasharray="3,3" stroke-width="2" points="${rPts}"/>`;
+svg+="</svg>";
+cw.innerHTML=svg+'<div class="chart-legend"><span>── M300 (tracejado preto)</span><span style="color:#ED7D31">── RF (tracejado laranja)</span></div>';
+wrap.appendChild(cw);panel.appendChild(wrap)}
+
+function renderFD(container){
+let dm=fdStore.dm,mp=fdStore.mp;
+let years=Object.keys(mp).sort();if(!years.length)return;
+let yr=years[years.length-1],months=mp[yr]||[],mo=months[months.length-1]||1;
+let sec=document.createElement("div");sec.className="section";
+let panel=document.createElement("div");panel.className="panel";
+
+function build(){
+let key=yr+"-"+mo,block=dm[key]||{};
+let allPlantas=Object.keys(block).sort();
+let prefixes=new Set();allPlantas.forEach(k=>{let p=k.split(" - ")[0].trim();if(ALLOWED.includes(p))prefixes.add(p)});
+let avail=ALLOWED.filter(p=>prefixes.has(p));
+let sel=new Set(avail);
+panel.innerHTML="";
+
+let hdr=document.createElement("div");hdr.className="panel-header";
+hdr.innerHTML='<h3>FD Multiflex — Histórico</h3>';
+
+let lbYr=document.createElement("label");lbYr.innerHTML="Ano: ";
+let selYr=document.createElement("select");years.forEach(y=>{let o=document.createElement("option");o.value=y;o.textContent=y;if(y===yr)o.selected=true;selYr.appendChild(o)});
+selYr.onchange=()=>{yr=selYr.value;months=mp[yr]||[];mo=months[months.length-1]||1;build()};
+lbYr.appendChild(selYr);hdr.appendChild(lbYr);
+
+let lbMo=document.createElement("label");lbMo.innerHTML="Mês: ";
+let selMo=document.createElement("select");(mp[yr]||[]).forEach(m=>{let o=document.createElement("option");o.value=m;o.textContent=MN[m];if(m===mo)o.selected=true;selMo.appendChild(o)});
+selMo.onchange=()=>{mo=+selMo.value;build()};
+lbMo.appendChild(selMo);hdr.appendChild(lbMo);
+
+let leg=document.createElement("div");leg.className="legend";
+leg.innerHTML='<span><i style="background:#C6EFCE"></i> ≥ 95%</span><span><i style="background:#FFEB9C"></i> 85%–95%</span><span><i style="background:#FFC7CE"></i> &lt; 85%</span>';
+hdr.appendChild(leg);panel.appendChild(hdr);
+
+let fb=document.createElement("div");fb.className="filter-bar";
+fb.innerHTML='<span>Plantas:</span>';
+let bAll=document.createElement("button");bAll.className="fbtn";bAll.textContent="Todas";bAll.onclick=()=>{sel=new Set(avail);buildTable()};fb.appendChild(bAll);
+let bNone=document.createElement("button");bNone.className="fbtn";bNone.textContent="Nenhuma";bNone.onclick=()=>{sel=new Set();buildTable()};fb.appendChild(bNone);
+let sp=document.createElement("span");sp.className="fsep";sp.textContent="|";fb.appendChild(sp);
+avail.forEach(p=>{let b=document.createElement("button");b.className="fbtn"+(sel.has(p)?" active":"");b.textContent=p;
+b.onclick=()=>{if(sel.has(p))sel.delete(p);else sel.add(p);buildTable()};fb.appendChild(b)});
+panel.appendChild(fb);
+
+let tableContainer=document.createElement("div");tableContainer.id="fdTableContainer";
+panel.appendChild(tableContainer);
+
+function buildTable(){
+// Update filter buttons
+fb.querySelectorAll(".fbtn").forEach(b=>{
+let t=b.textContent;if(ALLOWED.includes(t)){b.className="fbtn"+(sel.has(t)?" active":"")}});
+
+let chosen=[];
+[...sel].forEach(prefix=>{
+let cands=allPlantas.filter(k=>k.split(" - ")[0].trim()===prefix);
+if(prefix==="XAM"){let w1=cands.find(k=>k.includes("FD Multiflex W1"));if(w1){chosen.push(w1);return}}
+let exact=cands.find(k=>k.split(" - ").slice(1).join(" - ").trim()==="FD Multiflex");
+if(exact)chosen.push(exact)});
+
+let labels=chosen.length&&block[chosen[0]]?block[chosen[0]].labels:[];
+let tw=document.createElement("div");tw.className="table-wrap";
+let tbl=document.createElement("table");
+let thead="<thead><tr><th class='left'>Planta</th>";
+labels.forEach(l=>{thead+="<th>"+l+"</th>"});thead+="<th>Real TT</th></tr></thead>";
+let tbody="<tbody>";
+chosen.forEach(pl=>{let it=block[pl];if(!it)return;
+tbody+="<tr><td class='left'>"+pl.split(" - ")[0].trim()+"</td>";
+it.real.forEach(v=>{tbody+="<td style='background:"+colorFD(v)+"'>"+pct(v)+"</td>"});
+tbody+="<td style='background:"+colorFD(it.acc)+";font-weight:600'>"+pct(it.acc)+"</td></tr>"});
+tbody+="</tbody>";tbl.innerHTML=thead+tbody;tw.appendChild(tbl);
+tableContainer.innerHTML="";tableContainer.appendChild(tw)}
+
+buildTable()}
+
+build();sec.appendChild(panel);container.appendChild(sec)}
+</script>
+</body>
+</html>
